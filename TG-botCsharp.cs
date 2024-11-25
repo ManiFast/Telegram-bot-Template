@@ -16,7 +16,7 @@ class Program
     static async Task Main(string[] args)
     {
         // Ваш токен от BotFather
-        string token = "5082917786:AAHy00oT7BspvLizwpqtO_1kaF9R9P8PomI";
+        string token = "API TUT !!!";
 
         // Инициализация клиента Telegram Bot API
         var botClient = new TelegramBotClient(token);
