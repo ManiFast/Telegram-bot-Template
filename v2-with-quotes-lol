@@ -1,0 +1,200 @@
+using System;
+using System.IO;  // Для работы с файловой системой
+using System.Net.Http;  // Для запросов к API
+using System.Threading.Tasks;
+using Telegram.Bot;
+using Telegram.Bot.Types;
+using Telegram.Bot.Types.ReplyMarkups;
+using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Exceptions;
+using Telegram.Bot.Polling;
+using System.Collections.Generic;
+using Newtonsoft.Json.Linq;  // Для парсинга JSON
+
+class Program
+{
+    // Путь к файлу для логирования
+    static string logFilePath = "bot_logs.txt";
+
+    static string GetRandomQuote()
+    {
+        try
+        {
+            string[] lines = System.IO.File.ReadAllLines("quotes.txt"); // Чтение строк из файла
+
+            if (lines.Length == 0) // Проверка на пустой файл
+            {
+                return "Файл пуст.";
+            }
+
+            // Используем DateTime.Ticks для генерации случайного индекса
+            long ticks = DateTime.Now.Ticks;
+            int randomIndex = (int)(ticks % lines.Length); // Генерируем индекс по остаточному делению
+
+            string randomQuote = lines[randomIndex].Trim(); // Обрезаем пробелы
+
+            return randomQuote; // Возвращаем случайную строку
+        }
+        catch (Exception ex)
+        {
+            return "Не удалось загрузить цитаты: " + ex.Message;
+        }
+    }
+
+
+
+    static async Task Main(string[] args)
+    {
+        // Ваш токен от BotFather
+        string token = "A TI KURv@ aha xd API";
+
+        // Инициализация клиента Telegram Bot API
+        var botClient = new TelegramBotClient(token);
+
+        // Логирование времени запуска бота
+        LogToFile($"Bot started at {DateTime.Now}");
+        Console.WriteLine($"Bot started at {DateTime.Now}");
+
+        // Подписка на получение обновлений с использованием делегатов
+        botClient.StartReceiving(
+            HandleUpdatesAsync,
+            HandleErrorAsync
+        );
+
+        Console.ReadLine(); // Бот будет работать, пока не закроете консоль
+    }
+
+    // Обработка обновлений
+    static async Task HandleUpdatesAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
+    {
+        if (update.Type == UpdateType.Message && update.Message != null)
+        {
+            var message = update.Message;
+
+            // Логируем информацию о сообщении в консоль и в файл
+            LogToFile($"Message received from {message.From.Username}: {message.Text}");
+            Console.WriteLine($"Message received from {message.From.Username}: {message.Text}");
+
+            if (message.Text == "/start")
+            {
+                // Меню с блоками
+                var inlineKeyboard = new InlineKeyboardMarkup(new[]
+                {
+                    new InlineKeyboardButton[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("Погода (Москва)", "weather_moscow"),
+                        InlineKeyboardButton.WithCallbackData("Цитата Гослинга (Рандомная :D)", "quote_ryan"),
+                        InlineKeyboardButton.WithCallbackData("Нюдсы", "news"),
+                        InlineKeyboardButton.WithCallbackData("About", "about")
+                    }
+                });
+
+                await botClient.SendTextMessageAsync(
+                    chatId: message.Chat.Id,
+                    text: "Привет! Выберите одну из опций:",
+                    replyMarkup: inlineKeyboard
+                );
+            }
+        }
+        else if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery != null)
+        {
+            var callbackQuery = update.CallbackQuery;
+            // Логируем информацию о callback в консоль и в файл
+            LogToFile($"Callback received from {callbackQuery.From.Username}: {callbackQuery.Data}");
+            Console.WriteLine($"Callback received from {callbackQuery.From.Username}: {callbackQuery.Data}");
+
+            if (callbackQuery.Data == "weather_moscow")
+            {
+                // Получение погоды для Москвы через API
+                var weather = await GetWeatherAsync();
+                await botClient.SendTextMessageAsync(
+                    chatId: callbackQuery.Message.Chat.Id,
+                    text: $"Погода в Москве: {weather}"
+                );
+            }
+            else if (callbackQuery.Data == "quote_ryan")
+            {
+                // Получение случайной цитаты из файла
+                var quote = GetRandomQuote();
+                await botClient.SendTextMessageAsync(
+                    chatId: callbackQuery.Message.Chat.Id,
+                    text: quote
+                );
+            }
+            else if (callbackQuery.Data == "news")
+            {
+                // Сообщение про Нюдсы
+                await botClient.SendTextMessageAsync(
+                    chatId: callbackQuery.Message.Chat.Id,
+                    text: "Кинь сигну пжпж :)"
+                );
+            }
+            else if (callbackQuery.Data == "about")
+            {
+                // Информация о вас
+                string aboutText = "[github.io](https://manifast.github.io/)\n" +
+                                   "YouTube: [@Mani_Fast](https://www.youtube.com/@Mani_Fast/)\n" +
+                                   "VK: [@mani_fast](https://vk.com/mani_fast)\n\n" +
+                                   "Thanks to all <3";
+                await botClient.SendTextMessageAsync(
+                    chatId: callbackQuery.Message.Chat.Id,
+                    text: aboutText,
+                    parseMode: Telegram.Bot.Types.Enums.ParseMode.Markdown
+                );
+            }
+        }
+    }
+
+    // Обработка ошибок
+    static Task HandleErrorAsync(ITelegramBotClient botClient, Exception exception, HandleErrorSource source, CancellationToken cancellationToken)
+    {
+        // Логируем ошибку в консоль и в файл
+        Console.WriteLine($"Произошла ошибка: {exception.Message}");
+        LogToFile($"Error: {exception.Message}");
+        return Task.CompletedTask;
+    }
+
+    // Логирование в файл и вывод в консоль
+    static void LogToFile(string message)
+    {
+        try
+        {
+            // Запись сообщения в файл с добавлением времени
+            System.IO.File.AppendAllText(logFilePath, $"{DateTime.Now}: {message}\n");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Не удалось записать в лог: {ex.Message}");
+        }
+    }
+
+    // Получение погоды в Москве через API Met.no
+    static async Task<string> GetWeatherAsync()
+    {
+        try
+        {
+            using (var client = new HttpClient())
+            {
+                // Устанавливаем User-Agent, чтобы запрос был принят
+                client.DefaultRequestHeaders.Add("User-Agent", "YourAppName/1.0 (your@email.com)");
+
+                // URL для запроса погоды
+                string url = "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=55.7558&lon=37.6173";  // Координаты Москвы
+                var response = await client.GetStringAsync(url);
+
+                // Парсинг JSON-ответа
+                var jsonResponse = JObject.Parse(response);
+
+                // Извлекаем информацию о погоде (например, текущую температуру)
+                var temperature = jsonResponse["properties"]["timeseries"][0]["data"]["instant"]["details"]["air_temperature"].ToString();
+
+                // Возвращаем строку с информацией о погоде
+                return $"Текущая температура в Москве: {temperature}°C";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Не удалось получить погоду: {ex.Message}";
+        }
+    }
+}
